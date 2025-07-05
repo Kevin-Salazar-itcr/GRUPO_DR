@@ -1,0 +1,25 @@
+{
+  "name": "grupo_dr",
+  "version": "1.0.0",
+  "description": "",
+  "main": "auth.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kevin-Salazar-itcr/GRUPO_DR.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Kevin-Salazar-itcr/GRUPO_DR/issues"
+  },
+  "homepage": "https://github.com/Kevin-Salazar-itcr/GRUPO_DR#readme",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "googleapis": "^150.0.1"
+  }
+}

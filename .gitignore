@@ -1,0 +1,9 @@
+# Dependencias
+node_modules/
+
+# Archivos sensibles
+credentials.json
+token.json
+
+# Logs
+*.log
