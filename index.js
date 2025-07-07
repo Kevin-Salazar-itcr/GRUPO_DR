@@ -102,7 +102,7 @@ app.post("/updatePorID", async (req, res) => {
 });
 
 // DELETE /borrarPorID - busca por ID en la columna A y borra la fila
-app.delete("/borrarPorID", async (req, res) => {
+app.post("/borrarPorID", async (req, res) => {
   const { id, hoja } = req.body;
 
   if (!id || !hoja) {
