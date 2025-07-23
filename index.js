@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const axios = require("axios");
 const { google } = require("googleapis");
 
 const app = express();
@@ -12,6 +13,63 @@ const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
 const token = JSON.parse(process.env.GOOGLE_TOKEN_JSON);
 
 let oAuth2Client;
+let sheets;
+
+// Refrescar token si expiró y actualizar en Railway
+async function verificarYRefrescarToken() {
+  const ahora = Date.now();
+  const expiracion = token.expiry_date;
+
+  if (expiracion && ahora < expiracion - 60000) return; // Token aún válido
+
+  console.log("🔄 Token expirado o por expirar. Refrescando...");
+
+  const { client_id, client_secret } = credentials.installed;
+
+  try {
+    const response = await google.auth.OAuth2.prototype.refreshToken.call(
+      oAuth2Client,
+      token.refresh_token
+    );
+
+    const nuevoToken = response.credentials;
+    token.access_token = nuevoToken.access_token;
+    token.expiry_date = nuevoToken.expiry_date || (Date.now() + nuevoToken.expires_in * 1000);
+
+    oAuth2Client.setCredentials(token);
+    sheets = google.sheets({ version: "v4", auth: oAuth2Client });
+
+    console.log("✅ Token actualizado. Subiendo a Railway...");
+
+    await axios.post(
+      "https://backboard.railway.app/graphql/v2",
+      {
+        query: `
+          mutation {
+            secretsUpsert(input: {
+              projectId: "${process.env.RAILWAY_PROJECT_ID}",
+              secrets: [
+                { key: "GOOGLE_TOKEN_JSON", value: ${JSON.stringify(JSON.stringify(token))} }
+              ]
+            }) {
+              id
+            }
+          }
+        `
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.RAILWAY_API_TOKEN}`
+        }
+      }
+    );
+
+    console.log("🚀 Secret GOOGLE_TOKEN_JSON actualizado correctamente en Railway.");
+  } catch (err) {
+    console.error("❌ Error al refrescar o subir el token:", err.response?.data || err.message);
+  }
+}
 
 // Inicializar autenticación
 async function inicializar() {
@@ -24,9 +82,8 @@ async function inicializar() {
   );
 
   oAuth2Client.setCredentials(token);
+  sheets = google.sheets({ version: "v4", auth: oAuth2Client });
 }
-
-let sheets;
 
 // POST /escribir - agrega datos al final de la hoja indicada
 app.post("/escribir", async (req, res) => {
@@ -37,6 +94,8 @@ app.post("/escribir", async (req, res) => {
   }
 
   try {
+    await verificarYRefrescarToken();
+
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: process.env.SPREADSHEET_ID,
       range: `${hoja}`,
@@ -71,6 +130,8 @@ app.post("/updatePorID", async (req, res) => {
   }
 
   try {
+    await verificarYRefrescarToken();
+
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: process.env.SPREADSHEET_ID,
       range: `${hoja}`,
@@ -110,6 +171,8 @@ app.post("/borrarPorID", async (req, res) => {
   }
 
   try {
+    await verificarYRefrescarToken();
+
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: process.env.SPREADSHEET_ID,
       range: `${hoja}`,
@@ -138,8 +201,7 @@ app.post("/borrarPorID", async (req, res) => {
 
 // Iniciar servidor
 inicializar().then(() => {
-  sheets = google.sheets({ version: "v4", auth: oAuth2Client });
   app.listen(PORT, () => {
-    console.log(`✅ API ejecutándose`);
+    console.log(`✅ API ejecutándose en puerto ${PORT}`);
   });
 });
