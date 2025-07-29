@@ -27,14 +27,26 @@ async function verificarYRefrescarToken() {
   const { client_id, client_secret } = credentials.installed;
 
   try {
-    const response = await google.auth.OAuth2.prototype.refreshToken.call(
-      oAuth2Client,
-      token.refresh_token
-    );
+    if (!token.refresh_token) {
+      console.error("⚠️ No se encontró refresh_token. No se puede refrescar el token.");
+      return;
+    }
 
-    const nuevoToken = response.credentials;
-    token.access_token = nuevoToken.access_token;
-    token.expiry_date = nuevoToken.expiry_date || (Date.now() + nuevoToken.expires_in * 1000);
+    // Crear nuevo cliente temporal solo para refrescar token
+    const tempClient = new google.auth.OAuth2(
+      client_id,
+      client_secret,
+      "urn:ietf:wg:oauth:2.0:oob"
+    );
+    tempClient.setCredentials(token);
+
+    // Refrescar token de forma segura
+    await tempClient.getAccessToken(); // internamente refresca si es necesario
+
+    const nuevaCredencial = tempClient.credentials;
+
+    token.access_token = nuevaCredencial.access_token;
+    token.expiry_date = nuevaCredencial.expiry_date;
 
     oAuth2Client.setCredentials(token);
     sheets = google.sheets({ version: "v4", auth: oAuth2Client });
