@@ -51,7 +51,97 @@ async function verificarYRefrescarToken() {
 
     console.log("✅ Token actualizado. Subiendo a Railway...");
 
+    // Validar variables de entorno necesarias
+    if (!process.env.RAILWAY_PROJECT_ID || !process.env.RAILWAY_API_TOKEN) {
+      console.error("❌ Faltan variables de entorno: RAILWAY_PROJECT_ID o RAILWAY_API_TOKEN");
+      return;
+    }
+
+    console.log("📊 Variables de entorno:", {
+      PROJECT_ID: process.env.RAILWAY_PROJECT_ID ? "✅ Presente" : "❌ Faltante",
+      API_TOKEN: process.env.RAILWAY_API_TOKEN ? `✅ Presente (${process.env.RAILWAY_API_TOKEN.length} chars)` : "❌ Faltante"
+    });
+
+    // GraphQL mutation mejorada - usando la API v2 más reciente
     const graphqlQuery = `
+      mutation VariableUpsert($input: VariableUpsertInput!) {
+        variableUpsert(input: $input) {
+          id
+          name
+          value
+        }
+      }
+    `;
+
+    const graphqlVariables = {
+      input: {
+        projectId: process.env.RAILWAY_PROJECT_ID,
+        name: "GOOGLE_TOKEN_JSON",
+        value: JSON.stringify(token)
+      }
+    };
+
+    console.log("🔧 Enviando request a Railway GraphQL...");
+    console.log("Query:", graphqlQuery);
+    console.log("Variables:", {
+      ...graphqlVariables,
+      input: {
+        ...graphqlVariables.input,
+        value: "[TOKEN_HIDDEN]" // No mostrar el token en logs
+      }
+    });
+
+    const response = await axios.post(
+      "https://backboard.railway.app/graphql/v2",
+      {
+        query: graphqlQuery,
+        variables: graphqlVariables,
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.RAILWAY_API_TOKEN}`,
+        },
+        timeout: 30000 // 30 segundos timeout
+      }
+    );
+
+    console.log("📡 Respuesta de Railway:", JSON.stringify(response.data, null, 2));
+
+    if (response.data.errors) {
+      console.error("❌ Errores en la respuesta GraphQL:", response.data.errors);
+      return;
+    }
+
+    console.log("🚀 Secret GOOGLE_TOKEN_JSON actualizado correctamente en Railway.");
+  } catch (err) {
+    console.error("❌ Error al refrescar o subir el token:");
+    
+    if (err.response) {
+      // Error de respuesta HTTP
+      console.error("Status:", err.response.status);
+      console.error("Headers:", JSON.stringify(err.response.headers, null, 2));
+      console.error("Data:", JSON.stringify(err.response.data, null, 2));
+    } else if (err.request) {
+      // Error de request
+      console.error("Request error:", err.request);
+    } else {
+      // Error general
+      console.error("Error message:", err.message);
+      console.error("Stack:", err.stack);
+    }
+
+    // Intentar método alternativo usando la API REST de Railway (si existe)
+    console.log("🔄 Intentando método alternativo...");
+    await intentarActualizacionAlternativa();
+  }
+}
+
+// Método alternativo para actualizar la variable en Railway
+async function intentarActualizacionAlternativa() {
+  try {
+    // Intentar con la mutation anterior (por si hubo cambios en la API)
+    const graphqlQueryLegacy = `
       mutation($projectId: String!, $key: String!, $value: String!) {
         secretsUpsert(input: {
           projectId: $projectId,
@@ -70,10 +160,12 @@ async function verificarYRefrescarToken() {
       value: JSON.stringify(token),
     };
 
-    await axios.post(
+    console.log("🔄 Probando con mutation legacy...");
+
+    const response = await axios.post(
       "https://backboard.railway.app/graphql/v2",
       {
-        query: graphqlQuery,
+        query: graphqlQueryLegacy,
         variables: graphqlVariables,
       },
       {
@@ -81,17 +173,21 @@ async function verificarYRefrescarToken() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${process.env.RAILWAY_API_TOKEN}`,
         },
+        timeout: 30000
       }
     );
 
-    console.log("🚀 Secret GOOGLE_TOKEN_JSON actualizado correctamente en Railway.");
-  } catch (err) {
-    console.error("❌ Error al refrescar o subir el token:");
-    if (err.response?.data) {
-      console.error(JSON.stringify(err.response.data, null, 2));
+    console.log("📡 Respuesta legacy:", JSON.stringify(response.data, null, 2));
+    
+    if (response.data.errors) {
+      console.error("❌ También falló el método legacy:", response.data.errors);
     } else {
-      console.error(err.stack || err.message || err);
+      console.log("✅ Método legacy funcionó!");
     }
+  } catch (legacyErr) {
+    console.error("❌ También falló el método alternativo:", legacyErr.message);
+    console.log("⚠️ El token se actualizó localmente pero no se pudo sincronizar con Railway.");
+    console.log("💡 Considera actualizar manualmente la variable GOOGLE_TOKEN_JSON en Railway dashboard.");
   }
 }
 
@@ -223,9 +319,25 @@ app.post("/borrarPorID", async (req, res) => {
   }
 });
 
+// Endpoint para verificar el estado de las variables
+app.get("/debug", async (req, res) => {
+  res.json({
+    timestamp: new Date().toISOString(),
+    tokenExpiry: new Date(token.expiry_date).toISOString(),
+    tokenExpiresIn: Math.round((token.expiry_date - Date.now()) / 1000 / 60) + " minutos",
+    hasRefreshToken: !!token.refresh_token,
+    railwayVars: {
+      projectId: !!process.env.RAILWAY_PROJECT_ID,
+      apiToken: !!process.env.RAILWAY_API_TOKEN,
+      spreadsheetId: !!process.env.SPREADSHEET_ID
+    }
+  });
+});
+
 // Iniciar servidor
 inicializar().then(() => {
   app.listen(PORT, () => {
     console.log(`✅ API ejecutándose en puerto ${PORT}`);
+    console.log(`🔍 Endpoint de debug disponible en /debug`);
   });
 });
