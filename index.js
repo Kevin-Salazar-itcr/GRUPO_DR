@@ -20,7 +20,7 @@ async function verificarYRefrescarToken() {
   const ahora = Date.now();
   const expiracion = token.expiry_date;
 
-  if (expiracion && ahora < expiracion - 60000) return; // Token aún válido
+  if (expiracion && ahora < expiracion - 60000) return;
 
   console.log("🔄 Token expirado o por expirar. Refrescando...");
 
@@ -32,7 +32,6 @@ async function verificarYRefrescarToken() {
       return;
     }
 
-    // Crear nuevo cliente temporal solo para refrescar token
     const tempClient = new google.auth.OAuth2(
       client_id,
       client_secret,
@@ -40,8 +39,7 @@ async function verificarYRefrescarToken() {
     );
     tempClient.setCredentials(token);
 
-    // Refrescar token de forma segura
-    await tempClient.getAccessToken(); // internamente refresca si es necesario
+    await tempClient.getAccessToken();
 
     const nuevaCredencial = tempClient.credentials;
 
@@ -53,33 +51,42 @@ async function verificarYRefrescarToken() {
 
     console.log("✅ Token actualizado. Subiendo a Railway...");
 
+    const safeTokenString = JSON.stringify(token)
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"');
+
+    const graphqlQuery = `
+      mutation {
+        secretsUpsert(input: {
+          projectId: "${process.env.RAILWAY_PROJECT_ID}",
+          secrets: [
+            { key: "GOOGLE_TOKEN_JSON", value: "${safeTokenString}" }
+          ]
+        }) {
+          id
+        }
+      }
+    `;
+
     await axios.post(
       "https://backboard.railway.app/graphql/v2",
-      {
-        query: `
-          mutation {
-            secretsUpsert(input: {
-              projectId: "${process.env.RAILWAY_PROJECT_ID}",
-              secrets: [
-                { key: "GOOGLE_TOKEN_JSON", value: ${JSON.stringify(JSON.stringify(token))} }
-              ]
-            }) {
-              id
-            }
-          }
-        `
-      },
+      { query: graphqlQuery },
       {
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.RAILWAY_API_TOKEN}`
-        }
+          Authorization: `Bearer ${process.env.RAILWAY_API_TOKEN}`,
+        },
       }
     );
 
     console.log("🚀 Secret GOOGLE_TOKEN_JSON actualizado correctamente en Railway.");
   } catch (err) {
-    console.error("❌ Error al refrescar o subir el token:", err.response?.data || err.message);
+    console.error("❌ Error al refrescar o subir el token:");
+    if (err.response?.data) {
+      console.error(JSON.stringify(err.response.data, null, 2));
+    } else {
+      console.error(err.stack || err.message || err);
+    }
   }
 }
 
@@ -174,7 +181,7 @@ app.post("/updatePorID", async (req, res) => {
   }
 });
 
-// DELETE /borrarPorID - busca por ID en la columna A y borra la fila
+// POST /borrarPorID - busca por ID en la columna A y borra la fila
 app.post("/borrarPorID", async (req, res) => {
   const { id, hoja } = req.body;
 
@@ -197,7 +204,7 @@ app.post("/borrarPorID", async (req, res) => {
       return res.status(404).json({ error: `ID '${id}' no encontrado en la hoja '${hoja}'` });
     }
 
-    const rango = `${hoja}!A${filaIndex + 1}:Z${filaIndex + 1}`; // Asumiendo columnas A-Z
+    const rango = `${hoja}!A${filaIndex + 1}:Z${filaIndex + 1}`;
 
     await sheets.spreadsheets.values.clear({
       spreadsheetId: process.env.SPREADSHEET_ID,
