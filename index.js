@@ -51,16 +51,12 @@ async function verificarYRefrescarToken() {
 
     console.log("✅ Token actualizado. Subiendo a Railway...");
 
-    const safeTokenString = JSON.stringify(token)
-      .replace(/\\/g, '\\\\')
-      .replace(/"/g, '\\"');
-
     const graphqlQuery = `
-      mutation {
+      mutation($projectId: String!, $key: String!, $value: String!) {
         secretsUpsert(input: {
-          projectId: "${process.env.RAILWAY_PROJECT_ID}",
+          projectId: $projectId,
           secrets: [
-            { key: "GOOGLE_TOKEN_JSON", value: "${safeTokenString}" }
+            { key: $key, value: $value }
           ]
         }) {
           id
@@ -68,9 +64,18 @@ async function verificarYRefrescarToken() {
       }
     `;
 
+    const graphqlVariables = {
+      projectId: process.env.RAILWAY_PROJECT_ID,
+      key: "GOOGLE_TOKEN_JSON",
+      value: JSON.stringify(token),
+    };
+
     await axios.post(
       "https://backboard.railway.app/graphql/v2",
-      { query: graphqlQuery },
+      {
+        query: graphqlQuery,
+        variables: graphqlVariables,
+      },
       {
         headers: {
           "Content-Type": "application/json",
@@ -104,7 +109,7 @@ async function inicializar() {
   sheets = google.sheets({ version: "v4", auth: oAuth2Client });
 }
 
-// POST /escribir - agrega datos al final de la hoja indicada
+// POST /escribir
 app.post("/escribir", async (req, res) => {
   const { datos, hoja } = req.body;
 
@@ -140,7 +145,7 @@ app.post("/escribir", async (req, res) => {
   }
 });
 
-// POST /updatePorID - busca por ID y reemplaza fila entera
+// POST /updatePorID
 app.post("/updatePorID", async (req, res) => {
   const { datos, hoja } = req.body;
 
@@ -181,7 +186,7 @@ app.post("/updatePorID", async (req, res) => {
   }
 });
 
-// POST /borrarPorID - busca por ID en la columna A y borra la fila
+// POST /borrarPorID
 app.post("/borrarPorID", async (req, res) => {
   const { id, hoja } = req.body;
 
