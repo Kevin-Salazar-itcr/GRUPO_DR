@@ -52,30 +52,35 @@ async function verificarYRefrescarToken() {
     console.log("✅ Token actualizado. Subiendo a Railway...");
 
     // Validar variables de entorno necesarias
-    if (!process.env.RAILWAY_PROJECT_ID || !process.env.RAILWAY_API_TOKEN) {
-      console.error("❌ Faltan variables de entorno: RAILWAY_PROJECT_ID o RAILWAY_API_TOKEN");
+    if (!process.env.RAILWAY_PROJECT_ID || !process.env.RAILWAY_API_TOKEN || 
+        !process.env.RAILWAY_ENVIRONMENT_ID || !process.env.RAILWAY_SERVICE_ID) {
+      console.error("❌ Faltan variables de entorno requeridas:");
+      console.error("RAILWAY_PROJECT_ID:", process.env.RAILWAY_PROJECT_ID ? "✅" : "❌");
+      console.error("RAILWAY_API_TOKEN:", process.env.RAILWAY_API_TOKEN ? "✅" : "❌");
+      console.error("RAILWAY_ENVIRONMENT_ID:", process.env.RAILWAY_ENVIRONMENT_ID ? "✅" : "❌");
+      console.error("RAILWAY_SERVICE_ID:", process.env.RAILWAY_SERVICE_ID ? "✅" : "❌");
       return;
     }
 
-    console.log("📊 Variables de entorno:", {
+    console.log("📊 Variables de entorno Railway:", {
       PROJECT_ID: process.env.RAILWAY_PROJECT_ID ? "✅ Presente" : "❌ Faltante",
-      API_TOKEN: process.env.RAILWAY_API_TOKEN ? `✅ Presente (${process.env.RAILWAY_API_TOKEN.length} chars)` : "❌ Faltante"
+      API_TOKEN: process.env.RAILWAY_API_TOKEN ? `✅ Presente (${process.env.RAILWAY_API_TOKEN.length} chars)` : "❌ Faltante",
+      ENVIRONMENT_ID: process.env.RAILWAY_ENVIRONMENT_ID ? "✅ Presente" : "❌ Faltante",
+      SERVICE_ID: process.env.RAILWAY_SERVICE_ID ? "✅ Presente" : "❌ Faltante"
     });
 
-    // GraphQL mutation mejorada - usando la API v2 más reciente
+    // GraphQL mutation correcta según la documentación oficial de Railway
     const graphqlQuery = `
-      mutation VariableUpsert($input: VariableUpsertInput!) {
-        variableUpsert(input: $input) {
-          id
-          name
-          value
-        }
+      mutation variableUpsert($input: VariableUpsertInput!) {
+        variableUpsert(input: $input)
       }
     `;
 
     const graphqlVariables = {
       input: {
         projectId: process.env.RAILWAY_PROJECT_ID,
+        environmentId: process.env.RAILWAY_ENVIRONMENT_ID,
+        serviceId: process.env.RAILWAY_SERVICE_ID,
         name: "GOOGLE_TOKEN_JSON",
         value: JSON.stringify(token)
       }
@@ -84,9 +89,11 @@ async function verificarYRefrescarToken() {
     console.log("🔧 Enviando request a Railway GraphQL...");
     console.log("Query:", graphqlQuery);
     console.log("Variables:", {
-      ...graphqlVariables,
       input: {
-        ...graphqlVariables.input,
+        projectId: graphqlVariables.input.projectId,
+        environmentId: graphqlVariables.input.environmentId,
+        serviceId: graphqlVariables.input.serviceId,
+        name: graphqlVariables.input.name,
         value: "[TOKEN_HIDDEN]" // No mostrar el token en logs
       }
     });
@@ -329,6 +336,8 @@ app.get("/debug", async (req, res) => {
     railwayVars: {
       projectId: !!process.env.RAILWAY_PROJECT_ID,
       apiToken: !!process.env.RAILWAY_API_TOKEN,
+      environmentId: !!process.env.RAILWAY_ENVIRONMENT_ID,
+      serviceId: !!process.env.RAILWAY_SERVICE_ID,
       spreadsheetId: !!process.env.SPREADSHEET_ID
     }
   });
